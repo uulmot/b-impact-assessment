@@ -1,0 +1,155 @@
+/* BCorp Impact Data Analysis */
+
+CREATE DATABASE b_corp_impact;
+
+CREATE TABLE b_corp_impact_data
+    (
+	company_id VARCHAR(60),
+        company_name TEXT,
+        date_first_certified DATE,
+        date_certified DATE,
+        current_status VARCHAR(40),
+        industry TEXT,
+        industry_category TEXT,
+        country TEXT,
+        state TEXT,
+        city TEXT,
+        sector TEXT,
+        size VARCHAR(50),
+        assessment_year YEAR,
+        overall_score INT,
+        impact_area_community INT,
+        impact_area_customers INT,
+        impact_area_environment INT,
+        impact_area_governance INT,
+        impact_area_workers INT,
+        impact_area_community_na_score INT,
+        impact_area_customers_na_score INT,
+        impact_area_environment_na_score INT,
+        impact_area_governance_na_score INT,
+        impact_area_workers_na_score INT,
+        certification_cycle VARCHAR(10)
+    );
+
+-- After Creating Table, Import Dataset
+
+ALTER TABLE b_corp_impact_data 
+ADD COLUMN `id` INT UNSIGNED PRIMARY KEY AUTO_INCREMENT;
+
+SELECT *
+FROM b_corp_impact_data
+LIMIT 100;
+
+
+
+/* Industries with most number of actively certified companies */
+
+SELECT industry, COUNT(DISTINCT company_name) AS num_companies
+FROM b_corp_impact_data
+WHERE current_status = 'certified'
+GROUP BY industry
+ORDER BY num_companies DESC;
+
+
+/* Top Average Overall Scores of B-Impact Assessment by Industry */
+
+SELECT industry, ROUND(AVG(overall_score), 2) AS avg_overall_score
+FROM
+    (SELECT company_name, industry, date_certified, overall_score,
+        ROW_NUMBER() OVER(PARTITION BY company_name ORDER BY date_certified DESC) AS all_cert
+    FROM b_corp_impact_data) AS most_recent_cert
+WHERE all_cert = 1
+GROUP BY industry
+ORDER BY avg_overall_score DESC;
+
+
+/* Bottom Industries Overall Score of B-Impact Assessment by Year */
+
+SELECT industry, ROUND(AVG(overall_score), 2) AS avg_overall_score
+FROM
+    (SELECT company_name, industry, date_certified, overall_score,
+        ROW_NUMBER() OVER(PARTITION BY company_name ORDER BY date_certified DESC) AS all_certs
+    FROM b_corp_impact_data) AS most_recent_certs
+WHERE all_certs = 1
+GROUP BY industry
+ORDER BY avg_overall_score ASC;
+
+
+/* Median overall score of B-Impact Assessment */
+
+WITH RankedScores AS (
+    SELECT 
+        industry,
+        overall_score,
+        ROW_NUMBER() OVER (PARTITION BY industry ORDER BY overall_score) AS row_num,
+        COUNT(*) OVER (PARTITION BY industry) AS total_count
+    FROM b_corp_impact_data
+)
+SELECT 
+    industry,
+    AVG(overall_score) AS median_score
+FROM RankedScores
+WHERE row_num IN (FLOOR((total_count + 1) / 2), CEILING((total_count + 1) / 2))
+GROUP BY industry
+ORDER BY median_score DESC;
+
+
+/* Average Combined Impact Area and Impact Area NA Scores for each Five Assessed Category */
+
+SELECT industry, ROUND(community_category, 2) AS community_category, 
+ROUND(customers_category, 2) AS customers_category, ROUND(environment_category, 2) AS environment_category, 
+ROUND(governance_category, 2) AS governance_category, ROUND(workers_category, 2) AS workers_category
+FROM 
+    (SELECT 
+        company_name,
+        industry,
+        date_certified,
+        COALESCE((impact_area_community + impact_area_community_na_score), 0) AS community_category,
+        COALESCE((impact_area_customers + impact_area_customers_na_score), 0) AS customers_category,
+        COALESCE((impact_area_environment + impact_area_environment_na_score), 0) AS environment_category,
+        COALESCE((impact_area_governance + impact_area_governance_na_score), 0) AS governance_category,
+        COALESCE((impact_area_workers + impact_area_workers_na_score), 0) AS workers_category,
+            ROW_NUMBER() OVER(PARTITION BY company_name ORDER BY date_certified DESC) AS all_cert
+    FROM b_corp_impact_data) AS most_recent_cert
+WHERE all_cert = 1
+GROUP BY industry
+ORDER BY industry ASC;
+
+
+/* Trend of Number of Companies B-Lab Certified (2007-2024) */
+
+-- 2025 excluded cause year has not been concluded to provide complete data of 2025
+
+SELECT YEAR(date_certified) AS year, COUNT(current_status) AS num_companies
+FROM b_corp_impact_data
+WHERE current_status = 'certified' AND YEAR(date_certified) BETWEEN 2007 AND 2024
+GROUP BY year
+ORDER BY year DESC;
+
+
+/* Trend of Number of Companies B-Lab De-Certified (2007-2024) */
+
+-- 2025 excluded cause year has not been concluded to provide complete data of 2025
+
+SELECT YEAR(date_certified) AS year, COUNT(current_status) AS num_companies
+FROM b_corp_impact_data
+WHERE current_status = 'de-certified' AND YEAR(date_certified) BETWEEN 2007 AND 2024
+GROUP BY year
+ORDER BY year DESC;
+
+
+/* Countries with Low Number of Companies Certified or Countries Not on the List B-Lab Should Consider Doing More Outreach */
+
+SELECT country, COUNT(DISTINCT company_name) AS num_companies
+FROM b_corp_impact_data
+WHERE current_status = 'certified'
+GROUP BY country
+ORDER BY num_companies ASC; 
+
+
+/* Most number of actively certified companies by Size */
+
+SELECT size, COUNT(DISTINCT company_name) AS num_companies
+FROM b_corp_impact_data
+WHERE current_status = 'certified'
+GROUP BY size;
